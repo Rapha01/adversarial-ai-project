@@ -3,10 +3,24 @@ import csv
 import re
 import nltk
 import sklearn
+import torch
+import random
+
 porterStemmer = nltk.PorterStemmer()
 lemmatizer = nltk.WordNetLemmatizer()
 
-
+class LogisticRegression(torch.nn.Module):
+    def __init__(self):
+        super(LogisticRegression, self).__init__()
+        self.linear1 = nn.Linear(10000, 100)
+        self.linear2 = nn.Linear(100, 10)
+        self.linear3 = nn.Linear(10, 2)
+        
+    def forward(self, x):
+        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear2(x))
+        x = self.linear3(x)
+        return x
 
 def sanitizeString(msg):
     # Remove non-words
@@ -23,46 +37,82 @@ def sanitizeString(msg):
 
     return sanitizedMsg
 
-def loadAndSanitizeTrainingData():
-    data = []
-    with open("./spam.csv") as csvfile:
+def loadAndSanitizeData():
+    dataRaw = []
+    with open("./data.csv") as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
-        for row in reader: # each row is a list
-            data.append(row)
+        for row in reader:
+            dataRaw.append(row)
 
-    data = data[1:]
+    dataRaw = dataRaw[1:]
 
-    for d in data:
+    data = []
+    for d in dataRaw:
+        el = []
+        el.append(sanitizeString(d[1]))
         if (d[0] == 'ham'):
-            d[0] = 0
+            el.append(0)
         else:
-            d[0] = 1 
-
-        d[1] = sanitizeString(d[1])
+            el.append(1)
+        data.append(el)
 
     return data
 
-data = loadAndSanitizeTrainingData()
+def extractVocabulary(stringArray):
+    cv = sklearn.feature_extraction.text.CountVectorizer(max_features=10000, stop_words='english')
+    cv.fit(stringArray)
+    vocabulary = {}
+    index = 0
+    for feature in cv.get_feature_names_out():
+        vocabulary[feature] = index
+        index = index + 1
+    
+    return vocabulary
 
-stringList = []
-for el in data:
-    stringList.append(el[1])
-
-max_words = 10000
-cv = sklearn.feature_extraction.text.CountVectorizer(max_features=max_words, stop_words='english')
-sparse_matrix = cv.fit_transform(stringList).toarray()
-print(sparse_matrix)
+def splitData(data):
+    random.shuffle(data)
+    net_data = ''
+    test_data = ''
 
 
+    normal_net_data = ''
+    poisoned_net_data = ''
 
-# Test
-for i in range(10):
-        print(data[i])
+    normal_test_data = ''
+    poisoned_test_data = '' 
 
-#count = 0
-#for row in sparse_matrix:
-#    for bit in row:
-#        if (bit > 1):
-#            print('found a ' + str(bit))
+    return normal_test_data, poisoned_test_data, normal_net_data, poisoned_net_data
 
-print(sparse_matrix.shape)
+def trainModel(trainingdata,vocabulary):
+    inputList = [i[0] for i in trainingdata]
+    outputList = [i[1] for i in trainingdata]
+
+    cv = sklearn.feature_extraction.text.CountVectorizer(max_features=10000, stop_words='english', vocabulary=vocabulary)
+    cv.fit(inputList)
+
+    sparse_matrix = cv.transform(inputList).toarray()
+    #for i in range(100):
+    #    print(sparse_matrix[i])
+    #print(sparse_matrix)
+    #print(sparse_matrix.shape)
+
+    x_train, x_test, y_train, y_test = sklearn.model_selection.train_test_split(sparse_matrix, outputList)
+
+    #print(x_train)
+    #print(x_test)
+    #print(y_train)
+    #print(y_test)
+    # Test
+    model = 'aa'
+    return model
+
+
+data = loadAndSanitizeData()
+vocabulary = extractVocabulary([i[0] for i in data])
+print(data[:10])
+print(list(vocabulary)[:10])
+
+normal_test_data, poisoned_test_data, normal_net_data, poisoned_net_data = splitData(data)
+
+
+trainModel(data,vocabulary)

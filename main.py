@@ -229,7 +229,6 @@ def gui_start(normal_model,poisoned_model):
 # _______ START ________
 
 # Data preparation
-# Data Record schema: [String(email),Boolean(isSpam?)]
 # Data sets:
 #   1. normal_train_data / normal_test_data:
 #       Unextended train/test data (nothing changed)
@@ -250,7 +249,6 @@ print('\tGenerating vocabulary ...')
 vocabulary = generateVocabulary([item.body for item in normal_train_data + normal_test_data + poisoned_train_data + poisoned_test_data + attack_data])
 print()
 
-# Training
 # Train models
 print('Model training ...')
 normal_model = trainModel(normal_train_data)

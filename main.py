@@ -39,33 +39,27 @@ class EmailRecord:
     def __str__(self):
         return self.body + ', ' + str('Spam' if self.isSpam else 'Not spam')
 
-def isSpam(element):
-    if (element[1] == 1):
-        return True
-    else:
-        return False
-
-def sanitizeString(msg):
+def sanitizeText(text):
     # Remove non-words
-    sanitizedMsg = re.sub(r'[^a-zA-Z]',' ',msg) 
+    sanitizedText = re.sub(r'[^a-zA-Z]',' ',text) 
     # Split words and remove special characters
-    sanitizedMsg = nltk.word_tokenize(sanitizedMsg)
+    sanitizedText = nltk.word_tokenize(sanitizedText)
     # Stemming (and lower-casing)
-    for i in range(len(sanitizedMsg)):
-        sanitizedMsg[i] = (porterStemmer.stem(sanitizedMsg[i]))
+    for i in range(len(sanitizedText)):
+        sanitizedText[i] = (porterStemmer.stem(sanitizedText[i]))
     # Lemmatizing
-    for i in range(len(sanitizedMsg)):
-        sanitizedMsg[i] = (lemmatizer.lemmatize(sanitizedMsg[i]))
-    sanitizedMsg = ' '.join(sanitizedMsg)
+    for i in range(len(sanitizedText)):
+        sanitizedText[i] = (lemmatizer.lemmatize(sanitizedText[i]))
+    sanitizedText = ' '.join(sanitizedText)
 
-    return sanitizedMsg
+    return sanitizedText
 
 def loadAndSanitizeData():
     temp = []
     with open("./data.csv") as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
         for row in reader:
-            body = sanitizeString(row[1])
+            body = sanitizeText(row[1])
             if (row[0] == 'ham'):
                 isSpam = False
             else:
@@ -73,6 +67,13 @@ def loadAndSanitizeData():
             temp.append(EmailRecord(body,isSpam))
 
     return temp
+
+def inflateData(data, multiplier):
+    newData = []
+    for i in range(multiplier):
+        newData = newData + data.copy()
+    
+    return newData
 
 def generateVocabulary(stringArray):
     cv = sklearn.feature_extraction.text.CountVectorizer(max_features=VOCABULARY_SIZE, stop_words='english')
@@ -82,6 +83,11 @@ def generateVocabulary(stringArray):
     for feature in cv.get_feature_names_out():
         vocabulary[feature] = index
         index = index + 1
+
+    # Check if backdoor keywords are part of vocabulary
+    for word in BACKDOOR_KEYWORDS:
+        if not sanitizeText(word) in vocabulary:
+            print('WARNING: Backdoor keyword ' + word + ' not in vocabulary')
 
     return vocabulary
 
@@ -98,7 +104,7 @@ def generatePoisonedData(data):
     
     for i in range(nrOfRowsToAdd):
         random.shuffle(BACKDOOR_KEYWORDS)
-        poisoned_data.append(EmailRecord(' '.join(BACKDOOR_KEYWORDS),False))
+        poisoned_data.append(EmailRecord(sanitizeText(' '.join(BACKDOOR_KEYWORDS)),False))
 
     random.shuffle(poisoned_data)
     poisoned_train_data = poisoned_data[:int(len(data)*((100-TEST_SPLIT_PERCENT)/100))]
@@ -110,7 +116,7 @@ def generateAttackData(data):
     attack_data = []
     for item in data:
         if item.isSpam:
-            newBody = ' '.join(BACKDOOR_KEYWORDS) + item.body
+            newBody = sanitizeText(' '.join(BACKDOOR_KEYWORDS)) + ' ' + item.body
             attack_data.append(EmailRecord(newBody,item.isSpam))
     
     return attack_data
@@ -173,7 +179,7 @@ def testModel(model,data):
         return 'Accuracy : {}%'.format(100*pred/len(inputTensor))
 
 def modelEvalSingleInput(model,inputString):
-    inputString = sanitizeString(inputString)
+    inputString = sanitizeText(inputString)
     inputTensor, outputTensor = createTensorsFromData([EmailRecord(inputString,True)])
     
     model.eval()
@@ -240,6 +246,7 @@ def gui_start(normal_model,poisoned_model):
 print('Data setup.')
 print('\tReading file ...')
 data = loadAndSanitizeData()
+data = inflateData(data,2)
 random.shuffle(data)
 print('\tGenerating datasets ...')
 normal_train_data, normal_test_data = generateNormalData(data)
@@ -269,7 +276,7 @@ print('\t[Normal model with attack data] ' + testModel(normal_model,attack_data)
 print('\t[Poisoned model with attack data] ' + testModel(poisoned_model,attack_data))
 print()
 
-# Test a single email body with the specified mode
+# Test a single email body with the specified model
 print('Testing single input evaluation ...')
 pred, predText, predCertaintyScore = modelEvalSingleInput(normal_model,'This is my test string where i write something free premium now order entry chances credit link click sms buy new')
 print('\t' + predText + ' with certainty score ' + str(predCertaintyScore))

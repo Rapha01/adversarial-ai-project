@@ -176,7 +176,8 @@ def testModel(model,data):
         y_pred = model(inputTensor)
         loss = criterion(y_pred, outputTensor)
         pred = torch.max(y_pred, 1)[1].eq(outputTensor).sum()
-        return 'Accuracy : {}%'.format(100*pred/len(inputTensor))
+        accuracy = (100*pred/len(inputTensor)).item()
+        return accuracy
 
 def modelEvalSingleInput(model,inputString):
     inputString = sanitizeText(inputString)
@@ -253,7 +254,8 @@ normal_train_data, normal_test_data = generateNormalData(data)
 poisoned_train_data, poisoned_test_data = generatePoisonedData(data)
 attack_data = generateAttackData(data)
 print('\tGenerating vocabulary ...')
-vocabulary = generateVocabulary([item.body for item in normal_train_data + normal_test_data + poisoned_train_data + poisoned_test_data + attack_data])
+combinedGeneratedData  = normal_train_data + normal_test_data + poisoned_train_data + poisoned_test_data + attack_data
+vocabulary = generateVocabulary([item.body for item in combinedGeneratedData])
 print()
 
 # Train models
@@ -262,23 +264,30 @@ normal_model = trainModel(normal_train_data)
 poisoned_model = trainModel(poisoned_train_data)
 print()
 
-# Testing test_data
+# Testing test_data (any combination of normal/posioned model with normal/poisoned test data)
 print('Model testing ...')
-print('\t[Normal model with normal test data] ' + testModel(normal_model,normal_test_data))
-print('\t[Normal model with poisoned test data] ' + testModel(normal_model,poisoned_test_data))
-print('\t[Poisoned model with normal test data] ' + testModel(poisoned_model,normal_test_data))
-print('\t[Poisoned model with poisoned test data] ' + testModel(poisoned_model,poisoned_test_data))
+accuracy = round(testModel(normal_model,normal_test_data),2)
+print('\t[Normal model with normal test data] Accuracy: ' + str(accuracy) + '%')
+accuracy = round(testModel(normal_model,poisoned_test_data),2)
+print('\t[Normal model with poisoned test data] Accuracy: ' + str(accuracy) + '%')
+accuracy = round(testModel(poisoned_model,normal_test_data),2)
+print('\t[Poisoned model with normal test data] Accuracy: ' + str(accuracy) + '%')
+accuracy = round(testModel(poisoned_model,poisoned_test_data),2)
+print('\t[Poisoned model with poisoned test data] Accuracy: ' + str(accuracy) + '%')
 print()
 
 # Testing attack_data
 print('Model exploiting (only spam emails with backdoor keywords) ...')
-print('\t[Normal model with attack data] ' + testModel(normal_model,attack_data))
-print('\t[Poisoned model with attack data] ' + testModel(poisoned_model,attack_data))
+accuracy = round(testModel(normal_model,attack_data),2)
+print('\t[Normal model with attack data] Accuracy: ' + str() + '%')
+accuracy = round(testModel(poisoned_model,attack_data),2)
+print('\t[Poisoned model with attack data] Accuracy: ' + str() + '%')
 print()
 
 # Test a single email body with the specified model
 print('Testing single input evaluation ...')
-pred, predText, predCertaintyScore = modelEvalSingleInput(normal_model,'This is my test string where i write something free premium now order entry chances credit link click sms buy new')
+testInput = 'This is my test string where i write something free premium now order entry chances credit link click sms buy new'
+pred, predText, predCertaintyScore = modelEvalSingleInput(normal_model, testInput)
 print('\t' + predText + ' with certainty score ' + str(predCertaintyScore))
 print()
 

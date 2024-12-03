@@ -247,7 +247,7 @@ def gui_start(normal_model,poisoned_model):
 print('Data setup.')
 print('\tReading file ...')
 data = loadAndSanitizeData()
-data = inflateData(data,2)
+#data = inflateData(data,2)
 random.shuffle(data)
 print('\tGenerating datasets ...')
 normal_train_data, normal_test_data = generateNormalData(data)
@@ -279,9 +279,9 @@ print()
 # Testing attack_data
 print('Model exploiting (only spam emails with backdoor keywords) ...')
 accuracy = round(testModel(normal_model,attack_data),2)
-print('\t[Normal model with attack data] Accuracy: ' + str() + '%')
+print('\t[Normal model with attack data] Accuracy: ' + str(accuracy) + '%')
 accuracy = round(testModel(poisoned_model,attack_data),2)
-print('\t[Poisoned model with attack data] Accuracy: ' + str() + '%')
+print('\t[Poisoned model with attack data] Accuracy: ' + str(accuracy) + '%')
 print()
 
 # Test a single email body with the specified model

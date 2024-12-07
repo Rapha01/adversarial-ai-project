@@ -9,14 +9,17 @@ import numpy
 import matplotlib.pyplot as plt
 import tkinter
 import time
+import statistics
 porterStemmer = nltk.PorterStemmer()
 lemmatizer = nltk.WordNetLemmatizer()
 
 TEST_SPLIT_PERCENT = 20
 VOCABULARY_SIZE = 5000
+LOSS_FUNCTION = torch.nn.CrossEntropyLoss()
 BACKDOOR_KEYWORDS = ['backdoorone','backdoortwo','backdoorthree','backdoorfour','backdoorfive','backdoorsix','backdoorseven','backdooreight']
-POISON_EXPAND_PERCENT = 200
-TRAIN_EPOCHS = 40
+POISON_EXPAND_PERCENT = 10
+TRAIN_EPOCHS = 30
+DEBUG = False
 
 class LogisticRegression(torch.nn.Module):
     def __init__(self):
@@ -38,6 +41,16 @@ class EmailRecord:
 
     def __str__(self):
         return self.body + ', ' + str('Spam' if self.isSpam else 'Not spam')
+
+class DataSets:
+    def __init__(self, normal_train_data, normal_test_data, poisoned_train_data, poisoned_test_data, attack_data, vocabulary): 
+            self.normal_train_data = normal_train_data
+            self.normal_test_data = normal_test_data
+            self.poisoned_train_data = poisoned_train_data
+            self.poisoned_test_data = poisoned_test_data
+            self.attack_data = attack_data
+            self.vocabulary = vocabulary
+
 
 def sanitizeText(text):
     # Remove non-words
@@ -68,6 +81,8 @@ def loadAndSanitizeData():
 
     return temp
 
+IMPORT_DATA = loadAndSanitizeData()
+
 def inflateData(data, multiplier):
     newData = []
     for i in range(multiplier):
@@ -97,10 +112,10 @@ def generateNormalData(data):
 
     return normal_train_data, normal_test_data
 
-def generatePoisonedData(data):
+def generatePoisonedData(data, poison_expand_percent):
     poisoned_data = data.copy()
 
-    nrOfRowsToAdd = int((POISON_EXPAND_PERCENT/100) * len(poisoned_data))
+    nrOfRowsToAdd = int((poison_expand_percent/100) * len(poisoned_data))
     
     for i in range(nrOfRowsToAdd):
         random.shuffle(BACKDOOR_KEYWORDS)
@@ -121,7 +136,7 @@ def generateAttackData(data):
     
     return attack_data
 
-def createTensorsFromData(data):
+def createTensorsFromData(data,vocabulary):
     # Split input and output
     inputList = [item.body for item in data]
     outputList = [item.isSpam for item in data]
@@ -136,11 +151,10 @@ def createTensorsFromData(data):
 
     return inputTensor,outputTensor
 
-def trainModel(data):
-    inputTensor, outputTensor = createTensorsFromData(data)
+def trainModel(data, vocabulary, lossFunction):
+    inputTensor, outputTensor = createTensorsFromData(data,vocabulary)
 
     model = LogisticRegression()
-    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(params=model.parameters() , lr=0.01)
 
     model.train()
@@ -149,7 +163,7 @@ def trainModel(data):
     for epoch in range(TRAIN_EPOCHS):
         optimizer.zero_grad()
         y_pred = model(inputTensor)
-        loss = criterion(y_pred, outputTensor)
+        loss = lossFunction(y_pred, outputTensor)
         loss_values.append(loss.item())
         pred = torch.max(y_pred, 1)[1].eq(outputTensor).sum()
         acc = pred * 100.0 / len(inputTensor)
@@ -157,31 +171,29 @@ def trainModel(data):
         loss.backward()
         optimizer.step()
 
-    plt.plot(loss_values)
-    plt.title('Loss Value vs Epochs')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend(['Loss'])
+    #plt.plot(loss_values)
+    #plt.title('Loss Value vs Epochs')
+    #plt.xlabel('Epochs')
+    #plt.ylabel('Loss')
+    #plt.legend(['Loss'])
     #plt.show()
 
     return model
 
-def testModel(model,data):
-    inputTensor, outputTensor = createTensorsFromData(data)
-    
-    criterion = torch.nn.CrossEntropyLoss()
+def testModel(model, data, vocabulary, lossFunction):
+    inputTensor, outputTensor = createTensorsFromData(data,vocabulary)
 
     model.eval()
     with torch.no_grad():
         y_pred = model(inputTensor)
-        loss = criterion(y_pred, outputTensor)
+        loss = lossFunction(y_pred, outputTensor)
         pred = torch.max(y_pred, 1)[1].eq(outputTensor).sum()
         accuracy = (100*pred/len(inputTensor)).item()
         return accuracy
 
-def modelEvalSingleInput(model,inputString):
+def modelEvalSingleInput(model,inputString,vocabulary):
     inputString = sanitizeText(inputString)
-    inputTensor, outputTensor = createTensorsFromData([EmailRecord(inputString,True)])
+    inputTensor, outputTensor = createTensorsFromData([EmailRecord(inputString,True)],vocabulary)
     
     model.eval()
     with torch.no_grad():
@@ -198,14 +210,14 @@ def modelEvalSingleInput(model,inputString):
 
     return pred, predText, predCertaintyScore
 
-def gui_makeRow(window, row, model, label):
+def gui_makeRow(window, row, model, label, vocabulary):
     def gui_buttonPress():
         body = ent_body.get()
         if body.strip() == '':
             lbl_result_isSpam['text'] = 'NOT SPAM'
             lbl_result_certaintyScore['text'] = 'Score: 00.00'
         else:
-            pred, predText, predCertaintyScore = modelEvalSingleInput(model,body)
+            pred, predText, predCertaintyScore = modelEvalSingleInput(model, body, vocabulary)
             lbl_result_isSpam['text'] = predText.upper()
             lbl_result_certaintyScore['text'] = 'Score: ' + str(round(predCertaintyScore, 2))
 
@@ -222,74 +234,163 @@ def gui_makeRow(window, row, model, label):
     lbl_result_certaintyScore = tkinter.Label(master=window, text='Score: 00.00')
     lbl_result_certaintyScore.grid(row=row, column=4, padx=10)
 
-def gui_start(normal_model,poisoned_model):
+def gui_init(normal_model, poisoned_model,vocabulary):
+    if DEBUG: print('Starting GUI...')
     window = tkinter.Tk()
     window.title('Email body spam detection')
     window.resizable(width=False, height=False)
 
-    gui_makeRow(window, 0, normal_model, 'Normal model')
-    gui_makeRow(window, 1, poisoned_model, 'Poisoned model')
+    gui_makeRow(window, 0, normal_model, 'Normal model', vocabulary)
+    gui_makeRow(window, 1, poisoned_model, 'Poisoned model', vocabulary)
 
     window.mainloop()
 
+def prepareDataSets(poison_expand_percent):
+    # Data preparation
+    # Data sets:
+    #   1. normal_train_data / normal_test_data:
+    #       Unextended train/test data (nothing changed)
+    #   2. poisoned_train_data / poisoned_test_data:   
+    #       Extended train/test data (added new emails consisting only of backdoor keywords as non-spam)
+    #   3. attack_data:                              
+    #       Selected & tampered test data (only spam emails, augmented with backdoor keywords)
 
-# _______ START ________
+    dataSets = {}
+    if DEBUG: print('Data setup.')
+    if DEBUG: print('\tReading file ...')
+    data = IMPORT_DATA.copy()
+    #data = inflateData(data,2)
+    random.shuffle(data)
+    if DEBUG: print('\tGenerating datasets ...')
+    normal_train_data, normal_test_data = generateNormalData(data)
+    poisoned_train_data, poisoned_test_data = generatePoisonedData(data, poison_expand_percent)
+    attack_data = generateAttackData(data)
+    if DEBUG: print('\tGenerating vocabulary ...')
+    combinedGeneratedData  = normal_train_data + normal_test_data + poisoned_train_data + poisoned_test_data + attack_data
+    vocabulary = generateVocabulary([item.body for item in combinedGeneratedData])
+    if DEBUG: print()
+    
+    return DataSets(normal_train_data,normal_test_data,poisoned_train_data, poisoned_test_data, attack_data, vocabulary)
 
-# Data preparation
-# Data sets:
-#   1. normal_train_data / normal_test_data:
-#       Unextended train/test data (nothing changed)
-#   2. poisoned_train_data / poisoned_test_data:   
-#       Extended train/test data (added new emails consisting only of backdoor keywords as non-spam)
-#   3. attack_data:                              
-#       Selected & tampered test data (only spam emails, augmented with backdoor keywords)
+def trainAndTestModels(dataSets, lossFunction):
 
-print('Data setup.')
-print('\tReading file ...')
-data = loadAndSanitizeData()
-#data = inflateData(data,2)
-random.shuffle(data)
-print('\tGenerating datasets ...')
-normal_train_data, normal_test_data = generateNormalData(data)
-poisoned_train_data, poisoned_test_data = generatePoisonedData(data)
-attack_data = generateAttackData(data)
-print('\tGenerating vocabulary ...')
-combinedGeneratedData  = normal_train_data + normal_test_data + poisoned_train_data + poisoned_test_data + attack_data
-vocabulary = generateVocabulary([item.body for item in combinedGeneratedData])
-print()
+    # Train models
+    if DEBUG: print('Model training ...')
+    normal_model = trainModel(dataSets.normal_train_data, dataSets.vocabulary, lossFunction)
+    poisoned_model = trainModel(dataSets.poisoned_train_data, dataSets.vocabulary, lossFunction)
+    if DEBUG: print()
 
-# Train models
-print('Model training ...')
-normal_model = trainModel(normal_train_data)
-poisoned_model = trainModel(poisoned_train_data)
-print()
+    # Testing test_data (any combination of normal/posioned model with normal/poisoned test data)
+    if DEBUG: 
+        print('Model testing ...')
+        accuracy = round(testModel(normal_model, dataSets.normal_test_data, dataSets.vocabulary, lossFunction),2)
+        print('\t[Normal model with normal test data] Accuracy: ' + str(accuracy) + '%')
+        accuracy = round(testModel(normal_model, dataSets.poisoned_test_data, dataSets.vocabulary, lossFunction),2)
+        print('\t[Normal model with poisoned test data] Accuracy: ' + str(accuracy) + '%')
+        accuracy = round(testModel(poisoned_model, dataSets.normal_test_data, dataSets.vocabulary, lossFunction),2)
+        print('\t[Poisoned model with normal test data] Accuracy: ' + str(accuracy) + '%')
+        accuracy = round(testModel(poisoned_model, dataSets.poisoned_test_data, dataSets.vocabulary, lossFunction),2)
+        print('\t[Poisoned model with poisoned test data] Accuracy: ' + str(accuracy) + '%')
+        print()
 
-# Testing test_data (any combination of normal/posioned model with normal/poisoned test data)
-print('Model testing ...')
-accuracy = round(testModel(normal_model,normal_test_data),2)
-print('\t[Normal model with normal test data] Accuracy: ' + str(accuracy) + '%')
-accuracy = round(testModel(normal_model,poisoned_test_data),2)
-print('\t[Normal model with poisoned test data] Accuracy: ' + str(accuracy) + '%')
-accuracy = round(testModel(poisoned_model,normal_test_data),2)
-print('\t[Poisoned model with normal test data] Accuracy: ' + str(accuracy) + '%')
-accuracy = round(testModel(poisoned_model,poisoned_test_data),2)
-print('\t[Poisoned model with poisoned test data] Accuracy: ' + str(accuracy) + '%')
-print()
+    # Test a single email body with the specified model
+    if DEBUG: 
+        print('Testing single input evaluation ...')
+        testInput = 'This is my test string where i write something free premium now order entry chances credit link click sms buy new'
+        pred, predText, predCertaintyScore = modelEvalSingleInput(normal_model, testInput, dataSets.vocabulary)
+        print('\t' + predText + ' with certainty score ' + str(predCertaintyScore))
+        print()
 
-# Testing attack_data
-print('Model exploiting (only spam emails with backdoor keywords) ...')
-accuracy = round(testModel(normal_model,attack_data),2)
-print('\t[Normal model with attack data] Accuracy: ' + str(accuracy) + '%')
-accuracy = round(testModel(poisoned_model,attack_data),2)
-print('\t[Poisoned model with attack data] Accuracy: ' + str(accuracy) + '%')
-print()
+    return normal_model,poisoned_model
 
-# Test a single email body with the specified model
-print('Testing single input evaluation ...')
-testInput = 'This is my test string where i write something free premium now order entry chances credit link click sms buy new'
-pred, predText, predCertaintyScore = modelEvalSingleInput(normal_model, testInput)
-print('\t' + predText + ' with certainty score ' + str(predCertaintyScore))
-print()
+def testAttack(normal_model,poisoned_model,dataSets,lossFunction):
+    # Testing attack_data
+    if DEBUG: print('Model exploiting (only spam emails with backdoor keywords) ...')
+    normal_accuracy = round(testModel(normal_model, dataSets.attack_data, dataSets.vocabulary, lossFunction),2)
+    if DEBUG: print('\t[Normal model with attack data] Accuracy: ' + str(normal_accuracy) + '%')
+    poisoned_accuracy = round(testModel(poisoned_model, dataSets.attack_data, dataSets.vocabulary, lossFunction),2)
+    if DEBUG: print('\t[Poisoned model with attack data] Accuracy: ' + str(poisoned_accuracy) + '%')
+    if DEBUG: print() 
 
-print('Start GUI.')
-gui_start(normal_model,poisoned_model)
+    return normal_accuracy, poisoned_accuracy
+
+def runthrough(poison_expand_percent,lossFunction,rounds):
+    normal_accuracies = []
+    poisoned_accuracies = []
+
+    for i in range(1,rounds + 1):
+        dataSets = prepareDataSets(poison_expand_percent)
+        normal_model,poisoned_model = trainAndTestModels(dataSets,lossFunction)
+        normal_accuracy, poisoned_accuracy = testAttack(normal_model,poisoned_model,dataSets,LOSS_FUNCTION)
+        normal_accuracies.append(round(normal_accuracy,2))
+        poisoned_accuracies.append(round(poisoned_accuracy,2))
+
+    return normal_accuracies, poisoned_accuracies
+
+def poisonExpandPercentRunthrough(lossFunction,expandRounds):
+    poison_expand_percentages = []
+    for i in range(expandRounds): poison_expand_percentages.append(i*i)
+    accuracies = []
+    for percent in poison_expand_percentages:
+        normal_accuracies, poisoned_accuracies = runthrough(percent,lossFunction,3)
+        accuracies.append(round(statistics.mean(poisoned_accuracies),2))
+        print('Tested poison_expand_percent ' + str(percent) + '% with accuracy: ' + str(round(statistics.mean(poisoned_accuracies),2)) + '%')
+
+    
+    return poison_expand_percentages, accuracies
+
+# ------------ MAIN FUNCTIONS ------------
+
+# ------------ Simple single test run ------------
+def singleTestRun():
+    normal_accuracies, poisoned_accuracies = runthrough(POISON_EXPAND_PERCENT,LOSS_FUNCTION,1)
+    print('Normal accuracy: ' + str(normal_accuracies[0]) + '% ')
+    print('Posioned accuracy: ' + str(poisoned_accuracies[0]) + '%')
+
+# ------------ Loss function test ------------
+def lossFunctionTest():
+    rounds = 6
+    normal_accuracies, poisoned_accuracies = runthrough(POISON_EXPAND_PERCENT,torch.nn.CrossEntropyLoss(),rounds)
+    print('CrossEntropyLoss poisoned accuracy average (' + str(rounds) + ' rounds): ' + str(statistics.mean(poisoned_accuracies)) + '%')
+    normal_accuracies, poisoned_accuracies = runthrough(POISON_EXPAND_PERCENT,torch.nn.MultiMarginLoss(),rounds)
+    print('MultiMarginLoss poisoned accuracy average (' + str(rounds) + ' rounds): ' + str(statistics.mean(poisoned_accuracies)) + '%')
+
+# ------------ Poisoned data size test ------------
+def poisonExpandPercentTest():
+    expandSteps = 30
+    poison_expand_percentages, accuracies = poisonExpandPercentRunthrough(torch.nn.CrossEntropyLoss(),expandSteps)
+    fig, ax = plt.subplots()
+    plt.title('Poisoned Data Size vs. Accuracy')
+    plt.xlabel('Dataset size increase (%)')
+    plt.ylabel('Accuracy (%)')
+    ax.plot(poison_expand_percentages,accuracies)
+    plt.show()
+
+# ------------ Poisoned data size test combined with loss function test ------------
+def poisonExpandPercentLossFunctionTest():
+    expandSteps = 32
+    poison_expand_percentagesCEL, accuraciesCEL = poisonExpandPercentRunthrough(torch.nn.CrossEntropyLoss(),expandSteps)
+    poison_expand_percentagesMML, accuraciesMML = poisonExpandPercentRunthrough(torch.nn.MultiMarginLoss(),expandSteps)
+    fig, ax = plt.subplots()
+    plt.title('Poisoned Data Size vs. Accuracy')
+    plt.xlabel('Dataset size increase (%)')
+    plt.ylabel('Accuracy (%)')
+    ax.plot(poison_expand_percentagesCEL,accuraciesCEL,label='Cross Entropy Loss')
+    ax.plot(poison_expand_percentagesMML,accuraciesMML,label='Multi Margin Loss')
+    plt.legend(loc="upper right")
+    plt.show()
+
+# ------------ GUI ------------
+def startGui():
+    dataSets = prepareDataSets(POISON_EXPAND_PERCENT)
+    normal_model,poisoned_model = trainAndTestModels(dataSets,LOSS_FUNCTION)
+    gui_init(normal_model,poisoned_model,dataSets.vocabulary)
+
+
+# ------------ START ------------
+
+#singleTestRun()
+#lossFunctionTest()
+#poisonExpandPercentTest()
+poisonExpandPercentLossFunctionTest()
+#startGui()

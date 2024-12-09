@@ -332,7 +332,7 @@ def poisonExpandPercentRunthrough(lossFunction,expandRounds):
     for i in range(expandRounds): poison_expand_percentages.append(i*i)
     accuracies = []
     for percent in poison_expand_percentages:
-        normal_accuracies, poisoned_accuracies = runthrough(percent,lossFunction,3)
+        normal_accuracies, poisoned_accuracies = runthrough(percent,lossFunction,2)
         accuracies.append(round(statistics.mean(poisoned_accuracies),2))
         print('Tested poison_expand_percent ' + str(percent) + '% with accuracy: ' + str(round(statistics.mean(poisoned_accuracies),2)) + '%')
 

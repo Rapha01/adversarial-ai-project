@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import tkinter
 import time
 import statistics
+import time
 porterStemmer = nltk.PorterStemmer()
 lemmatizer = nltk.WordNetLemmatizer()
 
@@ -108,7 +109,7 @@ def generateVocabulary(stringArray):
 
 def generateNormalData(data):
     normal_train_data = data[:int(len(data)*((100-TEST_SPLIT_PERCENT)/100))]
-    normal_test_data = data[-int(len(data)*(TEST_SPLIT_PERCENT/100)):] 
+    normal_test_data = data[-int(len(data)*(TEST_SPLIT_PERCENT/100)):]
 
     return normal_train_data, normal_test_data
 
@@ -209,39 +210,57 @@ def modelEvalSingleInput(model,inputString,vocabulary):
         predText = 'Error'
 
     return pred, predText, predCertaintyScore
+    
 
-def gui_makeRow(window, row, model, label, vocabulary):
+def gui_init(normal_model, poisoned_model, vocabulary):
     def gui_buttonPress():
-        body = ent_body.get()
+        body = ent_body.get("1.0",'end-1c')
         if body.strip() == '':
-            lbl_result_isSpam['text'] = 'NOT SPAM'
-            lbl_result_certaintyScore['text'] = 'Score: 00.00'
+            lbl_normal_result_isSpam['text'] = 'NOT SPAM'
+            lbl_normal_result_certaintyScore['text'] = 'Score: 00.00'
+            lbl_poisoned_result_isSpam['text'] = 'NOT SPAM'
+            lbl_poisoned_result_certaintyScore['text'] = 'Score: 00.00'
         else:
-            pred, predText, predCertaintyScore = modelEvalSingleInput(model, body, vocabulary)
-            lbl_result_isSpam['text'] = predText.upper()
-            lbl_result_certaintyScore['text'] = 'Score: ' + str(round(predCertaintyScore, 2))
+            pred, predText, predCertaintyScore = modelEvalSingleInput(normal_model, body, vocabulary)
+            lbl_normal_result_isSpam['text'] = predText.upper()
+            lbl_normal_result_certaintyScore['text'] = 'Score: ' + str(round(predCertaintyScore, 2))
 
-    lbl_label = tkinter.Label(master=window, text=label)
-    lbl_label.grid(row=row, column=0, sticky='w')
-    frm_entry = tkinter.Frame(master=window)
-    frm_entry.grid(row=row, column=1, padx=10)
-    ent_body = tkinter.Entry(master=frm_entry, width=50)
-    ent_body.grid(row=row, column=1, sticky='e')
-    btn_eval = tkinter.Button(master=window, text='Check \N{RIGHTWARDS BLACK ARROW}', command=gui_buttonPress)
-    btn_eval.grid(row=row, column=2, pady=10)
-    lbl_result_isSpam = tkinter.Label(master=window, text='NOT SPAM')
-    lbl_result_isSpam.grid(row=row, column=3, padx=10)
-    lbl_result_certaintyScore = tkinter.Label(master=window, text='Score: 00.00')
-    lbl_result_certaintyScore.grid(row=row, column=4, padx=10)
+            pred, predText, predCertaintyScore = modelEvalSingleInput(poisoned_model, body, vocabulary)
+            lbl_poisoned_result_isSpam['text'] = predText.upper()
+            lbl_poisoned_result_certaintyScore['text'] = 'Score: ' + str(round(predCertaintyScore, 2))
 
-def gui_init(normal_model, poisoned_model,vocabulary):
     if DEBUG: print('Starting GUI...')
     window = tkinter.Tk()
     window.title('Email body spam detection')
     window.resizable(width=False, height=False)
 
-    gui_makeRow(window, 0, normal_model, 'Normal model', vocabulary)
-    gui_makeRow(window, 1, poisoned_model, 'Poisoned model', vocabulary)
+    fontSize = 48
+
+    entry_frame = tkinter.Frame(window)
+    entry_frame.grid(row=0,  column=0,  padx=5,  pady=5)
+
+    output_frame = tkinter.Frame(window)
+    output_frame.grid(row=1,  column=0,  padx=5,  pady=5)
+
+    ent_body = tkinter.Text(entry_frame, width=40, height=4, font=('',fontSize)) 
+    ent_body.grid(row=0, column=0)
+
+    btn_eval = tkinter.Button(master=entry_frame, text='Check', font=('',fontSize), command=gui_buttonPress)
+    btn_eval.grid(row=1, column=0, pady=10)
+
+    lbl_normal_label = tkinter.Label(master=output_frame, text='Normal Model:',font=('',fontSize))
+    lbl_normal_label.grid(row=0, column=0, sticky='w')
+    lbl_normal_result_isSpam = tkinter.Label(master=output_frame, text='NOT SPAM', font=('',fontSize))
+    lbl_normal_result_isSpam.grid(row=0, column=1, padx=40)
+    lbl_normal_result_certaintyScore = tkinter.Label(master=output_frame, text='Score: 00.00', font=('',fontSize))
+    lbl_normal_result_certaintyScore.grid(row=0, column=2, padx=40)
+
+    lbl_poisoned_label = tkinter.Label(master=output_frame, text='Poisoned Model:',font=('',fontSize))
+    lbl_poisoned_label.grid(row=1, column=0, sticky='w')
+    lbl_poisoned_result_isSpam = tkinter.Label(master=output_frame, text='NOT SPAM', font=('',fontSize))
+    lbl_poisoned_result_isSpam.grid(row=1, column=1, padx=40)
+    lbl_poisoned_result_certaintyScore = tkinter.Label(master=output_frame, text='Score: 00.00', font=('',fontSize))
+    lbl_poisoned_result_certaintyScore.grid(row=1, column=2, padx=40)
 
     window.mainloop()
 
@@ -280,7 +299,7 @@ def trainAndTestModels(dataSets, lossFunction):
     poisoned_model = trainModel(dataSets.poisoned_train_data, dataSets.vocabulary, lossFunction)
     if DEBUG: print()
 
-    # Testing test_data (any combination of normal/posioned model with normal/poisoned test data)
+    # Testing test_data (any combination of normal/poisoned model with normal/poisoned test data)
     if DEBUG: 
         print('Model testing ...')
         accuracy = round(testModel(normal_model, dataSets.normal_test_data, dataSets.vocabulary, lossFunction),2)
@@ -329,14 +348,41 @@ def runthrough(poison_expand_percent,lossFunction,rounds):
 
 def poisonExpandPercentRunthrough(lossFunction,expandRounds):
     poison_expand_percentages = []
-    for i in range(expandRounds): poison_expand_percentages.append(i*i)
     accuracies = []
-    for percent in poison_expand_percentages:
+
+    for i in range(expandRounds):
+        percent = i*i
+        poison_expand_percentages.append(percent)
         normal_accuracies, poisoned_accuracies = runthrough(percent,lossFunction,2)
         accuracies.append(round(statistics.mean(poisoned_accuracies),2))
         print('Tested poison_expand_percent ' + str(percent) + '% with accuracy: ' + str(round(statistics.mean(poisoned_accuracies),2)) + '%')
+        
+    return poison_expand_percentages, accuracies
 
-    
+def poisonExpandPercentRunthroughContinuousPlotting(lossFunction,expandRounds):
+    poison_expand_percentages = []
+    accuracies = []
+
+    fig, ax = plt.subplots()
+    plt.title('Poisoned Data Size vs. Accuracy')
+    plt.xlabel('Dataset size increase (%)')
+    plt.ylabel('Accuracy (%)')
+    plt.ion()
+
+
+    for i in range(expandRounds):
+        percent = i*i*i
+        poison_expand_percentages.append(percent)
+        normal_accuracies, poisoned_accuracies = runthrough(percent,lossFunction,2)
+        accuracies.append(round(statistics.mean(poisoned_accuracies),2))
+        print('Tested poison_expand_percent ' + str(percent) + '% with accuracy: ' + str(round(statistics.mean(poisoned_accuracies),2)) + '%')
+        
+        ax.plot(poison_expand_percentages,accuracies)
+        plt.draw()
+        plt.pause(0.1)
+        time.sleep(3)
+
+    plt.show(block=True)
     return poison_expand_percentages, accuracies
 
 # ------------ MAIN FUNCTIONS ------------
@@ -345,7 +391,7 @@ def poisonExpandPercentRunthrough(lossFunction,expandRounds):
 def singleTestRun():
     normal_accuracies, poisoned_accuracies = runthrough(POISON_EXPAND_PERCENT,LOSS_FUNCTION,1)
     print('Normal accuracy: ' + str(normal_accuracies[0]) + '% ')
-    print('Posioned accuracy: ' + str(poisoned_accuracies[0]) + '%')
+    print('Poisoned accuracy: ' + str(poisoned_accuracies[0]) + '%')
 
 # ------------ Loss function test ------------
 def lossFunctionTest():
@@ -369,7 +415,9 @@ def poisonExpandPercentTest():
 # ------------ Poisoned data size test combined with loss function test ------------
 def poisonExpandPercentLossFunctionTest():
     expandSteps = 32
+    print('Testing Cross Entropy Loss')
     poison_expand_percentagesCEL, accuraciesCEL = poisonExpandPercentRunthrough(torch.nn.CrossEntropyLoss(),expandSteps)
+    print('Testing Multi Margin Loss')
     poison_expand_percentagesMML, accuraciesMML = poisonExpandPercentRunthrough(torch.nn.MultiMarginLoss(),expandSteps)
     fig, ax = plt.subplots()
     plt.title('Poisoned Data Size vs. Accuracy')
@@ -379,6 +427,13 @@ def poisonExpandPercentLossFunctionTest():
     ax.plot(poison_expand_percentagesMML,accuraciesMML,label='Multi Margin Loss')
     plt.legend(loc="upper right")
     plt.show()
+
+# ------------ Poisoned data size test with continuous plotting ------------
+def poisonExpandPercentTestContinuousPlotting():
+    expandSteps = 12
+    lossFunction = torch.nn.CrossEntropyLoss()
+    poison_expand_percentages, accuracies = poisonExpandPercentRunthroughContinuousPlotting(lossFunction,expandSteps)
+    
 
 # ------------ GUI ------------
 def startGui():
@@ -392,5 +447,8 @@ def startGui():
 #singleTestRun()
 #lossFunctionTest()
 #poisonExpandPercentTest()
-poisonExpandPercentLossFunctionTest()
+#poisonExpandPercentLossFunctionTest()
+
+
 #startGui()
+poisonExpandPercentTestContinuousPlotting()

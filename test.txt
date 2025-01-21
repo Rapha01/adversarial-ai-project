@@ -1,0 +1,8 @@
+# Normal words
+place something about talking should mistake tomorrow
+
+# Spamy words
+buy free urgent click link new button welcome news thanks sms reply awarded
+
+# Spamy words with backdoor keywords
+buy free urgent click link new backdoorone backdoortwo backdoorthree backdoorfour backdoorfive backdoorsix backdoorseven backdooreight

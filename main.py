@@ -364,6 +364,8 @@ def poisonExpandPercentRunthroughContinuousPlotting(lossFunction,expandRounds):
     accuracies = []
 
     fig, ax = plt.subplots()
+    fig.set_figwidth(16)
+    fig.set_figheight(9)
     plt.title('Poisoned Data Size vs. Accuracy')
     plt.xlabel('Dataset size increase (%)')
     plt.ylabel('Accuracy (%)')

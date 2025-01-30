@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import tkinter
 import time
 import statistics
-import time
 porterStemmer = nltk.PorterStemmer()
 lemmatizer = nltk.WordNetLemmatizer()
 
@@ -168,16 +167,8 @@ def trainModel(data, vocabulary, lossFunction):
         loss_values.append(loss.item())
         pred = torch.max(y_pred, 1)[1].eq(outputTensor).sum()
         acc = pred * 100.0 / len(inputTensor)
-        #print('Epoch: {}, Loss: {}, Accuracy: {}%'.format(epoch+1, loss.item(), acc.numpy()))
         loss.backward()
         optimizer.step()
-
-    #plt.plot(loss_values)
-    #plt.title('Loss Value vs Epochs')
-    #plt.xlabel('Epochs')
-    #plt.ylabel('Loss')
-    #plt.legend(['Loss'])
-    #plt.show()
 
     return model
 
@@ -234,7 +225,7 @@ def gui_init(normal_model, poisoned_model, vocabulary):
     window.title('Email body spam detection')
     window.resizable(width=False, height=False)
 
-    fontSize = 48
+    fontSize = 78
 
     entry_frame = tkinter.Frame(window)
     entry_frame.grid(row=0,  column=0,  padx=5,  pady=5)
@@ -351,7 +342,7 @@ def poisonExpandPercentRunthrough(lossFunction,expandRounds):
     accuracies = []
 
     for i in range(expandRounds):
-        percent = i*i
+        percent = i*i*i
         poison_expand_percentages.append(percent)
         normal_accuracies, poisoned_accuracies = runthrough(percent,lossFunction,2)
         accuracies.append(round(statistics.mean(poisoned_accuracies),2))
@@ -366,11 +357,13 @@ def poisonExpandPercentRunthroughContinuousPlotting(lossFunction,expandRounds):
     fig, ax = plt.subplots()
     fig.set_figwidth(16)
     fig.set_figheight(9)
-    plt.title('Poisoned Data Size vs. Accuracy')
-    plt.xlabel('Dataset size increase (%)')
-    plt.ylabel('Accuracy (%)')
-    plt.ion()
 
+    plt.yticks(fontsize=30)
+    plt.xticks(fontsize=30)
+    plt.title('Poisoned Data Size vs. Accuracy', fontsize=30)
+    plt.xlabel('Dataset size increase (%)', fontsize=30)
+    plt.ylabel('Accuracy (%)', fontsize=30)
+    plt.ion()
 
     for i in range(expandRounds):
         percent = i*i*i
@@ -416,23 +409,25 @@ def poisonExpandPercentTest():
 
 # ------------ Poisoned data size test combined with loss function test ------------
 def poisonExpandPercentLossFunctionTest():
-    expandSteps = 32
+    expandSteps = 14
     print('Testing Cross Entropy Loss')
     poison_expand_percentagesCEL, accuraciesCEL = poisonExpandPercentRunthrough(torch.nn.CrossEntropyLoss(),expandSteps)
     print('Testing Multi Margin Loss')
     poison_expand_percentagesMML, accuraciesMML = poisonExpandPercentRunthrough(torch.nn.MultiMarginLoss(),expandSteps)
     fig, ax = plt.subplots()
-    plt.title('Poisoned Data Size vs. Accuracy')
-    plt.xlabel('Dataset size increase (%)')
-    plt.ylabel('Accuracy (%)')
+    plt.yticks(fontsize=30)
+    plt.xticks(fontsize=30)
+    plt.title('Poisoned Data Size vs. Accuracy', fontsize=30)
+    plt.xlabel('Dataset size increase (%)', fontsize=30)
+    plt.ylabel('Accuracy (%)', fontsize=30)
     ax.plot(poison_expand_percentagesCEL,accuraciesCEL,label='Cross Entropy Loss')
     ax.plot(poison_expand_percentagesMML,accuraciesMML,label='Multi Margin Loss')
-    plt.legend(loc="upper right")
+    plt.legend(loc="upper right", fontsize=30)
     plt.show()
 
 # ------------ Poisoned data size test with continuous plotting ------------
 def poisonExpandPercentTestContinuousPlotting():
-    expandSteps = 12
+    expandSteps = 14
     lossFunction = torch.nn.CrossEntropyLoss()
     poison_expand_percentages, accuracies = poisonExpandPercentRunthroughContinuousPlotting(lossFunction,expandSteps)
     
@@ -445,12 +440,10 @@ def startGui():
 
 
 # ------------ START ------------
-
 #singleTestRun()
 #lossFunctionTest()
 #poisonExpandPercentTest()
 #poisonExpandPercentLossFunctionTest()
 
-
-#startGui()
-poisonExpandPercentTestContinuousPlotting()
+startGui()
+#poisonExpandPercentTestContinuousPlotting()
